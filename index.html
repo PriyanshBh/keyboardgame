@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Typing Frenzy</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: url('https://i.imgur.com/yWk0nSg.png');
+      background-size: cover;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #game {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .bug {
+      position: absolute;
+      padding: 10px 15px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 50%;
+      cursor: default;
+      user-select: none;
+      transition: transform 0.2s;
+    }
+    .bug.pop {
+      transform: scale(0);
+      transition: transform 0.3s;
+    }
+    #input {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+      padding: 10px;
+      width: 80%;
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-size: 24px;
+      z-index: 10;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <input id="input" autocomplete="off" />
+  <div id="overlay" style="display:none"></div>
+  <audio id="pop-sound" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg"></audio>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script>
+    const { useState, useEffect, useRef } = React;
+    function TypingFrenzy() {
+      const [bugs, setBugs] = useState([]);
+      const [score, setScore] = useState(0);
+      const [spawnTime, setSpawnTime] = useState(20000); // start 20s
+      const [input, setInput] = useState('');
+      const [typed, setTyped] = useState(0);
+      const [correct, setCorrect] = useState(0);
+      const [gameOver, setGameOver] = useState(false);
+      const startTimeRef = useRef(Date.now());
+      const inputRef = useRef(null);
+      const wordsEasy = ['bug', 'cat', 'dog', 'bee', 'frog', 'bird'];
+      const wordsMedium = ['apple', 'house', 'zebra', 'piano', 'grape'];
+      const wordsHard = ['penguin', 'dolphin', 'macaroni', 'elephant'];
+      const difficultyRef = useRef(0);
+
+      useEffect(() => {
+        inputRef.current.focus();
+        const spawn = () => {
+          const level = difficultyRef.current;
+          const wordList = level < 2 ? (level === 0 ? wordsEasy : wordsMedium) : wordsHard;
+          const word = wordList[Math.floor(Math.random() * wordList.length)];
+          const id = Date.now() + Math.random();
+          const x = Math.random() * (window.innerWidth - 100);
+          const y = Math.random() * (window.innerHeight - 150);
+          setBugs(b => [...b, { id, word, x, y, popping:false }]);
+        }
+        const interval = setInterval(spawn, spawnTime);
+        return () => clearInterval(interval);
+      }, [spawnTime]);
+
+      useEffect(() => {
+        if (bugs.length > 12) {
+          setGameOver(true);
+        }
+      }, [bugs]);
+
+      const popSound = () => {
+        const s = document.getElementById('pop-sound');
+        s.currentTime = 0;
+        s.play();
+      }
+
+      const handleInput = (e) => {
+        setInput(e.target.value);
+      }
+
+      const submitWord = () => {
+        if(gameOver) return;
+        if (!input.trim()) return;
+        setTyped(t => t + 1);
+        const index = bugs.findIndex(b => b.word === input.trim());
+        if (index !== -1) {
+          const bug = bugs[index];
+          popSound();
+          setCorrect(c => c + 1);
+          setScore(s => s + 10);
+          const remaining = bugs.filter((_, i) => i !== index);
+          if (remaining.length === 0) {
+            setScore(s => s + 20);
+            difficultyRef.current += 1;
+            setSpawnTime(t => Math.max(3000, t - 2000));
+            // spawn new bug immediately
+            const level = difficultyRef.current;
+            const wordList = level < 2 ? (level === 0 ? wordsEasy : wordsMedium) : wordsHard;
+            const word = wordList[Math.floor(Math.random() * wordList.length)];
+            const id = Date.now() + Math.random();
+            const x = Math.random() * (window.innerWidth - 100);
+            const y = Math.random() * (window.innerHeight - 150);
+            remaining.push({ id, word, x, y, popping:false });
+          }
+          setBugs(remaining);
+        }
+        setInput('');
+      }
+
+      const handleKey = (e) => {
+        if(e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          submitWord();
+        }
+      }
+
+      const restart = () => {
+        setBugs([]);
+        setScore(0);
+        setSpawnTime(20000);
+        setInput('');
+        setTyped(0);
+        setCorrect(0);
+        difficultyRef.current = 0;
+        startTimeRef.current = Date.now();
+        setGameOver(false);
+      }
+
+      const elapsedMinutes = (Date.now() - startTimeRef.current) / 60000;
+      const accuracy = typed ? Math.round((correct/typed)*100) : 0;
+      const wpm = elapsedMinutes > 0 ? Math.round(correct/elapsedMinutes) : 0;
+
+      return (
+        React.createElement(React.Fragment, null,
+          bugs.map(b =>
+            React.createElement('div', { key: b.id, className: 'bug', style:{left:b.x,top:b.y}}, b.word)
+          ),
+          React.createElement('div', {id:'overlay', style:{display: gameOver?'flex':'none'}},
+            React.createElement('div', null,
+              React.createElement('div', null, 'Game Over'),
+              React.createElement('div', null, 'Score: '+score),
+              React.createElement('div', null, 'Accuracy: '+accuracy+'%'),
+              React.createElement('div', null, 'WPM: '+wpm),
+              React.createElement('button', {onClick: restart}, 'Restart')
+            )
+          )
+        )
+      );
+    }
+
+    ReactDOM.render(React.createElement(TypingFrenzy), document.getElementById('game'));
+    document.getElementById('input').addEventListener('keydown', function(e){
+      if(e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+      }
+    });
+    document.getElementById('input').addEventListener('keyup', function(e){
+      if(e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+      }
+    });
+    const inputElem = document.getElementById('input');
+    inputElem.focus();
+    inputElem.addEventListener('input', handleInput);
+    inputElem.addEventListener('keydown', handleKey);
+  </script>
+</body>
+</html>
